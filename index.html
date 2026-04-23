@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PT Bunkyo</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Noto Sans JP','Hiragino Sans','Helvetica Neue',sans-serif;background:#f5f5f3;color:#0a0a0a;overflow-x:hidden;}
+@keyframes float{0%,100%{transform:translate(0,0)}25%{transform:translate(-20px,-15px)}50%{transform:translate(20px,15px)}75%{transform:translate(15px,-20px)}}
+@keyframes pulseSlow{0%,100%{opacity:.35}50%{opacity:.85}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+.hero-bg{animation:float 22s ease-in-out infinite}
+.hero-p{animation:pulseSlow 4s ease-in-out infinite}
+.fade-in{animation:fadeIn .22s ease}
+.slide-up{animation:slideUp .28s ease}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:#d4d4d0;border-radius:2px}
+button,a{touch-action:manipulation}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:300;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:600px){.modal-overlay{align-items:center}}
+.modal-box{background:#fff;width:100%;max-width:460px;max-height:88vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:22px 18px 44px}
+@media(min-width:600px){.modal-box{border-radius:14px;padding:28px 28px 32px}}
+.color-dot{width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform .12s;display:inline-block;}
+.color-dot.sel{border-color:#0a0a0a;transform:scale(1.18)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+
+const EDIT_PASSWORD="bunkyo2026";
+const PRESET_COLORS=["#dc2626","#ea580c","#d97706","#16a34a","#0891b2","#2563eb","#7c3aed","#db2777","#6b7280","#0f172a","#059669","#be123c","#1e40af","#7e22ce","#374151"];
+const ROLES=["支部長","副支部長","事務長","調整窓口担当","運営相談役","支部員"];
+const DEF_COLORS={"支部長":"#dc2626","副支部長":"#ea580c","事務長":"#7c3aed","調整窓口担当":"#0891b2","運営相談役":"#059669","支部員":"#6b7280"};
+const META={org:"東京都理学療法士協会",branch:"文京区支部",year:"2026",reportUrl:"https://docs.google.com/spreadsheets/d/1ynR874aF5_YLxGqyK3JzAHeN2nUR9KdfbOjIUVhD7BI/edit",docUrl:"https://docs.google.com/document/d/1B-BS4Gdo5CxXfkC07CTDxaRNIHt2gH-q/edit"};
+
+const INIT_MEMBERS=[
+  {id:1,name:"陣内裕成",kana:"じんのうち・ひろしげ",nick:"じんじん",role:"支部長",org:"日本医科大学",phone:"090-1234-5678",email:"jinnouchi@example.com",address:"東京都文京区",note:"",photo:null,card:null,color:null,order:0},
+  {id:2,name:"高田将規",kana:"たかだ・まさき",nick:"まっきー",role:"副支部長",org:"東京科学大学病院",phone:"090-2345-6789",email:"takada@example.com",address:"",note:"",photo:null,card:null,color:null,order:1},
+  {id:3,name:"野々山良輔",kana:"ののやま・りょうすけ",nick:"のんたん",role:"事務長",org:"東京大学医学部附属病院",phone:"",email:"nonoyama@example.com",address:"",note:"",photo:null,card:null,color:null,order:2},
+  {id:4,name:"長谷川真人",kana:"はせがわ・まさと",nick:"はっせー",role:"調整窓口担当",org:"東京大学医学部附属病院",phone:"090-3456-7890",email:"hasegawa@example.com",address:"",note:"",photo:null,card:null,color:null,order:3},
+  {id:5,name:"吉田司",kana:"よしだ・つかさ",nick:"よっしー",role:"調整窓口担当",org:"順天堂大学医学部附属順天堂医院",phone:"",email:"yoshida@example.com",address:"",note:"",photo:null,card:null,color:null,order:4},
+  {id:6,name:"岡安健",kana:"おかやす・たけし",nick:"たけちゃん",role:"運営相談役",org:"東京科学大学病院",phone:"090-4567-8901",email:"",address:"",note:"",photo:null,card:null,color:null,order:5},
+  {id:7,name:"霜田晃佑",kana:"しもだ・こうすけ",nick:"しもちゃん",role:"支部員",org:"東京科学大学病院",phone:"",email:"shimoda@example.com",address:"",note:"",photo:null,card:null,color:null,order:6},
+  {id:8,name:"下山寛誉史",kana:"しもやま・のぶよし",nick:"のぶこむ",role:"支部員",org:"東京科学大学病院",phone:"",email:"",address:"",note:"",photo:null,card:null,color:null,order:7},
+  {id:9,name:"圖師将也",kana:"ずし・まさや",nick:"ずっしー",role:"支部員",org:"東京科学大学病院",phone:"090-5678-9012",email:"zushi@example.com",address:"",note:"",photo:null,card:null,color:null,order:8},
+  {id:10,name:"樋口奈央",kana:"ひぐち・なお",nick:"ぐっち",role:"支部員",org:"MOVETEX株式会社",phone:"",email:"higuchi@example.com",address:"",note:"",photo:null,card:null,color:null,order:9},
+  {id:11,name:"吉満倫光",kana:"よしみつ・ともみつ",nick:"みっちゃん",role:"支部員",org:"スマイルリンク",phone:"",email:"yoshimitsu@example.com",address:"",note:"",photo:null,card:null,color:null,order:10},
+  {id:12,name:"大熊淳志",kana:"おおくま・あつし",nick:"くまちゃん",role:"支部員",org:"グッドサイクルシステム",phone:"090-6789-0123",email:"",address:"",note:"",photo:null,card:null,color:null,order:11},
+  {id:13,name:"大澤龍矢",kana:"おおさわ・りゅうや",nick:"りゅうちゃん",role:"支部員",org:"東京都立墨東病院",phone:"",email:"osawa@example.com",address:"",note:"",photo:null,card:null,color:null,order:12},
+];
+
+const INIT_PROJECTS=[
+  {id:"survey",name:"支部調査活動",lead:"陣内裕成",main:"高田将規",sub1:"－",sub2:"－",desc:"支部の現状把握・調査・研究活動を行う。",note:"支部会議で定期報告。",color:"#3b82f6",url:""},
+  {id:"frail",name:"フレイル予防事業支援業務",lead:"長谷川真人",main:"陣内裕成",sub1:"吉田司",sub2:"圖師将也",desc:"高齢者のフレイル予防を支援する区委託事業。",note:"事務作業費・委託費の5%が事務担当者に支払われる。",color:"#10b981",url:"https://docs.google.com/document/d/1Ria_peFo7tTDtruqAGCoXOAjFSWUI9xF/edit"},
+  {id:"bchalle",name:"Bチャレ（架け橋事業）",lead:"陣内裕成",main:"長谷川真人",sub1:"吉満倫光",sub2:"霜田晃佑",desc:"専門職と地域住民をつなぐ架け橋事業。",note:"窓口業務のメール等CCには副担当者を入れること。",color:"#f59e0b",url:"https://docs.google.com/document/d/1PElUOfoCdzG29egotBl8Llt_Bfzbg-py/edit"},
+  {id:"chiiki",name:"地域リハビリテーション活動支援事業",lead:"高田将規",main:"霜田晃佑",sub1:"野々山良輔",sub2:"長谷川真人",desc:"地域におけるリハビリテーション活動を支援する事業。",note:"定例会で事前・事後報告をすること。",color:"#8b5cf6",url:"https://docs.google.com/document/d/1UDX95LPLaim1wSGnps41xjZBLoEgm6VY/edit"},
+  {id:"jimu",name:"事務体制整備・支部会議",lead:"野々山良輔",main:"陣内裕成",sub1:"霜田晃佑",sub2:"岡安健",desc:"事務体制の整備・改善および支部会議の調整窓口。",note:"調整窓口担当者は定例会へ参加すること。",color:"#ec4899",url:""},
+  {id:"kenshu",name:"（臨時）支部研修会企画運営",lead:"吉田司",main:"吉満倫光",sub1:"圖師将也",sub2:"野々山良輔",desc:"臨時開催の支部研修会の企画・運営。",note:"支部員は支部会への参加を必須とする。",color:"#ef4444",url:""},
+];
+
+const INIT_NOTICES=[
+  {id:1,text:"次回支部会議：5月10日（土）14:00〜",icon:"📅"},
+  {id:2,text:"フレイル予防事業 参加者募集中",icon:"📢"},
+];
+
+function getMC(m){return m.color||DEF_COLORS[m.role]||"#6b7280";}
+
+function Clock(){
+  const [now,setNow]=useState(new Date());
+  useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
+  const p=n=>String(n).padStart(2,"0");
+  const days=["日","月","火","水","木","金","土"];
+  return(
+    <div style={{textAlign:"right",lineHeight:1.15,flexShrink:0}}>
+      <div style={{fontSize:12,fontWeight:700,color:"#0a0a0a",letterSpacing:.3,fontVariantNumeric:"tabular-nums"}}>
+        {p(now.getHours())}:{p(now.getMinutes())}:{p(now.getSeconds())}
+      </div>
+      <div style={{fontSize:10,color:"#8a8a85"}}>
+        {now.getMonth()+1}/{now.getDate()}({days[now.getDay()]})
+      </div>
+    </div>
+  );
+}
+
+function Av({name,size=36,color="#6b7280",photo}){
+  if(photo)return <img src={photo} alt={name} style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,border:"2px solid white"}}/>;
+  return <div style={{width:size,height:size,borderRadius:"50%",background:color,color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.36,fontWeight:900,flexShrink:0,fontStyle:"italic"}}>{name[0]}</div>;
+}
+
+function Modal({title,onClose,children}){
+  useEffect(()=>{document.body.style.overflow="hidden";return()=>{document.body.style.overflow="";};},[]);
+  return(
+    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-box slide-up">
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <div style={{fontSize:16,fontWeight:700}}>{title}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:24,cursor:"pointer",color:"#8a8a85",lineHeight:1}}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PwModal({onSuccess,onClose}){
+  const [pw,setPw]=useState(""),[err,setErr]=useState(false);
+  const submit=()=>{if(pw===EDIT_PASSWORD){onSuccess();}else{setErr(true);setPw("");}};
+  return(
+    <Modal title="🔐 編集モード" onClose={onClose}>
+      <div style={{fontSize:13,color:"#3d3d3a",marginBottom:8}}>パスワードを入力してください</div>
+      <input type="password" value={pw} onChange={e=>{setPw(e.target.value);setErr(false);}} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="パスワード" autoFocus
+        style={{width:"100%",border:`1.5px solid ${err?"#dc2626":"#e8e8e5"}`,padding:"11px 12px",fontSize:16,borderRadius:10,outline:"none",marginBottom:err?4:14,fontFamily:"inherit"}}/>
+      {err&&<div style={{fontSize:12,color:"#dc2626",marginBottom:10}}>パスワードが違います</div>}
+      <button onClick={submit} style={{width:"100%",background:"#0a0a0a",color:"white",border:"none",padding:"13px",fontSize:15,fontWeight:700,borderRadius:10,cursor:"pointer",fontFamily:"inherit"}}>ログイン</button>
+    </Modal>
+  );
+}
+
+function ColorPicker({current,onChange}){
+  const [custom,setCustom]=useState(current||"#6b7280");
+  return(
+    <div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+        {PRESET_COLORS.map(c=>(
+          <div key={c} className={`color-dot${current===c?" sel":""}`} style={{background:c}} onClick={()=>onChange(c)}/>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <input type="color" value={custom} onChange={e=>setCustom(e.target.value)} style={{width:36,height:36,border:"none",borderRadius:8,cursor:"pointer",padding:0}}/>
+        <button onClick={()=>onChange(custom)} style={{flex:1,background:"#f5f5f3",border:"1px solid #e8e8e5",borderRadius:8,padding:"8px",fontSize:12,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>カスタムカラーを適用</button>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [members,setMembers]=useState(INIT_MEMBERS);
+  const [projects,setProjects]=useState(INIT_PROJECTS);
+  const [notices,setNotices]=useState(INIT_NOTICES);
+  const [page,setPage]=useState("home");
+  const [selM,setSelM]=useState(null);
+  const [edit,setEdit]=useState(false);
+  const [showPw,setShowPw]=useState(false);
+  const [mSearch,setMSearch]=useState("");
+  const [expandedP,setExpandedP]=useState(null);
+  const [editMId,setEditMId]=useState(null);
+  const [colorId,setColorId]=useState(null);
+  const [noticeEdit,setNoticeEdit]=useState(false);
+
+  const updM=(id,k,v)=>{
+    setMembers(ms=>ms.map(m=>m.id===id?{...m,[k]:v}:m));
+    setSelM(prev=>prev&&prev.id===id?{...prev,[k]:v}:prev);
+  };
+
+  // ★ 並び替え：orderを直接swap
+  const moveM=(id,dir)=>{
+    setMembers(prev=>{
+      const sorted=[...prev].sort((a,b)=>a.order-b.order);
+      const idx=sorted.findIndex(m=>m.id===id);
+      const newIdx=idx+dir;
+      if(newIdx<0||newIdx>=sorted.length)return prev;
+      const oA=sorted[idx].order;
+      const oB=sorted[newIdx].order;
+      return prev.map(m=>{
+        if(m.id===sorted[idx].id)return{...m,order:oB};
+        if(m.id===sorted[newIdx].id)return{...m,order:oA};
+        return m;
+      });
+    });
+  };
+
+  const addM=()=>{
+    const max=Math.max(...members.map(m=>m.order),0);
+    setMembers(ms=>[...ms,{id:Date.now(),name:"新メンバー",kana:"",nick:"",role:"支部員",org:"",phone:"",email:"",address:"",note:"",photo:null,card:null,color:null,order:max+1}]);
+  };
+  const delM=(id)=>{setMembers(ms=>ms.filter(m=>m.id!==id));if(selM?.id===id)setSelM(null);};
+  const updP=(id,k,v)=>setProjects(ps=>ps.map(p=>p.id===id?{...p,[k]:v}:p));
+  const addP=()=>setProjects(ps=>[...ps,{id:"p"+Date.now(),name:"新規事業",lead:"",main:"",sub1:"－",sub2:"－",desc:"",note:"",color:"#6b7280",url:""}]);
+  const delP=(id)=>setProjects(ps=>ps.filter(p=>p.id!==id));
+
+  const sortedAll=[...members].sort((a,b)=>a.order-b.order);
+  const officers=sortedAll.filter(m=>m.role!=="支部員");
+  const regulars=sortedAll.filter(m=>m.role==="支部員");
+  const filtered=sortedAll.filter(m=>!mSearch||m.name.includes(mSearch)||m.kana.includes(mSearch)||m.email.includes(mSearch)||m.phone.includes(mSearch));
+
+  const goPage=p=>{setPage(p);setSelM(null);};
+  const handlePhoto=(id,type,e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>updM(id,type,ev.target.result);r.readAsDataURL(f);};
+
+  const colorM=members.find(m=>m.id===colorId);
+  const editMember=members.find(m=>m.id===editMId);
+
+  const C={w:"#ffffff",k:"#0a0a0a",g50:"#fafaf9",g100:"#f5f5f3",g200:"#e8e8e5",g300:"#d4d4d0",g500:"#8a8a85",g700:"#3d3d3a"};
+  const sBtn={background:C.k,color:"white",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"};
+  const oBtn={background:C.w,color:C.k,border:`1px solid ${C.g200}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"};
+  const card={background:C.w,border:`1px solid ${C.g200}`,borderRadius:14};
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f5f5f3"}}>
+
+      {/* ── HEADER（iPhone対応：height固定、flex、折り返しなし） ── */}
+      <header style={{background:C.w,borderBottom:`1px solid ${C.g200}`,position:"sticky",top:0,zIndex:100,WebkitTransform:"translateZ(0)"}}>
+        <div style={{display:"flex",alignItems:"center",height:50,padding:"0 10px",gap:3,overflow:"hidden"}}>
+          {/* ロゴ */}
+          <div onClick={()=>goPage("home")} style={{cursor:"pointer",flexShrink:0,marginRight:2}}>
+            <span style={{fontStyle:"italic",fontWeight:900,fontSize:15,letterSpacing:-.5,whiteSpace:"nowrap",color:C.k}}>PT Bunkyo</span>
+          </div>
+          {/* ナビボタン */}
+          {[["home","ホーム"],["members","MB"],["projects","事業"]].map(([k,l])=>(
+            <button key={k} onClick={()=>goPage(k)}
+              style={{background:page===k&&!selM?"#0a0a0a":"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,color:page===k&&!selM?"white":C.g500,padding:"5px 7px",borderRadius:6,flexShrink:0,whiteSpace:"nowrap"}}>
+              {l}
+            </button>
+          ))}
+          {/* スペーサー */}
+          <div style={{flex:1,minWidth:0}}/>
+          {/* 時計 */}
+          <Clock/>
+          {/* 編集ボタン */}
+          <button onClick={()=>edit?setEdit(false):setShowPw(true)}
+            style={{marginLeft:4,background:edit?"#dc2626":C.w,color:edit?"white":C.k,border:`1px solid ${edit?"#dc2626":C.g200}`,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
+            {edit?"✎編集中":"編集"}
+          </button>
+        </div>
+      </header>
+
+      {/* ── BODY ── */}
+      <div style={{maxWidth:600,margin:"0 auto",padding:"16px 12px 64px"}}>
+
+        {/* HOME */}
+        {page==="home"&&!selM&&(
+          <div className="fade-in">
+            {/* Hero */}
+            <div style={{background:C.k,color:"white",padding:"30px 22px 26px",marginBottom:14,borderRadius:16,position:"relative",overflow:"hidden"}}>
+              <div className="hero-bg" style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px)",backgroundSize:"34px 34px",pointerEvents:"none"}}/>
+              {[...Array(6)].map((_,i)=>(
+                <div key={i} className="hero-p" style={{position:"absolute",width:25+i*10,height:25+i*10,borderRadius:"50%",background:"rgba(255,255,255,.06)",left:`${8+i*16}%`,top:`${10+i*13}%`,animationDelay:`${i*.65}s`,pointerEvents:"none"}}/>
+              ))}
+              <div style={{position:"relative",zIndex:1}}>
+                <div style={{fontSize:9,letterSpacing:3,color:"rgba(255,255,255,.4)",marginBottom:10,fontWeight:500}}>LEADING COMMUNITY HEALTH</div>
+                <h1 style={{margin:"0 0 4px",fontSize:24,fontWeight:700,lineHeight:1.2,letterSpacing:-.3}}>{META.branch}</h1>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:20}}>{META.org} — {META.year}年度</div>
+                <div style={{display:"flex",gap:9,flexWrap:"wrap"}}>
+                  <button onClick={()=>goPage("members")} style={{background:"white",color:C.k,border:"none",padding:"8px 18px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",borderRadius:8}}>メンバー →</button>
+                  <button onClick={()=>goPage("projects")} style={{background:"transparent",color:"white",border:"1px solid rgba(255,255,255,.35)",padding:"8px 18px",fontSize:12,cursor:"pointer",fontFamily:"inherit",borderRadius:8}}>事業一覧 →</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:12}}>
+              {[
+                {n:members.length,label:"支部員数",unit:"名"},
+                {n:projects.length,label:"活動事業数",unit:"件"},
+                {n:members.filter(m=>m.role==="調整窓口担当").length,label:"調整窓口担当",unit:"名"},
+                {n:officers.length,label:"役職者数",unit:"名"},
+              ].map(s=>(
+                <div key={s.label} style={{...card,padding:"13px 15px"}}>
+                  <div style={{fontSize:9,letterSpacing:1.5,color:C.g500,fontWeight:700,marginBottom:2}}>{s.label.toUpperCase()}</div>
+                  <div style={{fontSize:26,fontWeight:700,letterSpacing:-1,color:"#1f2937"}}>{s.n}<span style={{fontSize:11,fontWeight:500,color:C.g500,marginLeft:2}}>{s.unit}</span></div>
+                </div>
+              ))}
+            </div>
+
+            {/* お知らせ */}
+            <div style={{...card,padding:"13px 15px",marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.g500}}>NOTICES</div>
+                {edit&&<button onClick={()=>setNoticeEdit(!noticeEdit)} style={{background:"none",border:"none",fontSize:12,color:C.g500,cursor:"pointer"}}>{noticeEdit?"完了":"✏️"}</button>}
+              </div>
+              {notices.map(n=>(
+                <div key={n.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${C.g100}`}}>
+                  {noticeEdit
+                    ?<><input value={n.icon} onChange={e=>setNotices(ns=>ns.map(x=>x.id===n.id?{...x,icon:e.target.value}:x))} style={{width:32,border:`1px solid ${C.g200}`,padding:3,borderRadius:5,textAlign:"center",fontSize:14,fontFamily:"inherit"}}/><input value={n.text} onChange={e=>setNotices(ns=>ns.map(x=>x.id===n.id?{...x,text:e.target.value}:x))} style={{flex:1,border:`1px solid ${C.g200}`,padding:"4px 7px",borderRadius:5,fontSize:12,fontFamily:"inherit"}}/><button onClick={()=>setNotices(ns=>ns.filter(x=>x.id!==n.id))} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16,flexShrink:0}}>×</button></>
+                    :<><span style={{fontSize:14,flexShrink:0}}>{n.icon}</span><span style={{fontSize:12,color:C.g700}}>{n.text}</span></>
+                  }
+                </div>
+              ))}
+              {noticeEdit&&<button onClick={()=>setNotices(ns=>[...ns,{id:Date.now(),text:"新しいお知らせ",icon:"📌"}])} style={{...oBtn,marginTop:9,width:"100%",fontSize:11}}>＋ お知らせ追加</button>}
+            </div>
+
+            {/* 全メンバー一覧 */}
+            <div style={{...card,marginBottom:12}}>
+              <div style={{padding:"13px 15px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.g500}}>ALL MEMBERS</div>
+                {edit&&<button style={{...oBtn,fontSize:10,padding:"4px 9px"}} onClick={addM}>＋ 追加</button>}
+              </div>
+              {/* 役職者 */}
+              <div style={{padding:"7px 10px 3px"}}>
+                <div style={{fontSize:8,fontWeight:700,letterSpacing:2,color:C.g300,padding:"3px 4px 5px"}}>OFFICERS</div>
+                {officers.map((m,i)=>(
+                  <div key={m.id} style={{display:"flex",alignItems:"center",gap:9,padding:"7px",borderRadius:9,cursor:"pointer",marginBottom:2}} onClick={()=>{setSelM(m);setPage("members");}}>
+                    <Av name={m.name} size={34} color={getMC(m)} photo={m.photo}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}<span style={{fontSize:10,color:C.g500,marginLeft:4}}>{m.nick}</span></div>
+                      <div style={{fontSize:10,color:C.g500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.org}</div>
+                    </div>
+                    <span style={{fontSize:9,fontWeight:700,color:"white",padding:"2px 7px",background:getMC(m),borderRadius:20,whiteSpace:"nowrap",flexShrink:0}}>{m.role}</span>
+                    {edit&&(
+                      <div style={{display:"flex",gap:2,flexShrink:0}}>
+                        <button onClick={e=>{e.stopPropagation();moveM(m.id,-1);}} style={{background:C.g100,border:"none",borderRadius:4,padding:"3px 7px",cursor:"pointer",fontSize:14,lineHeight:1}}>↑</button>
+                        <button onClick={e=>{e.stopPropagation();moveM(m.id,1);}} style={{background:C.g100,border:"none",borderRadius:4,padding:"3px 7px",cursor:"pointer",fontSize:14,lineHeight:1}}>↓</button>
+                      </div>
+                    )}
+                    {!edit&&<span style={{color:C.g300,fontSize:14,flexShrink:0}}>›</span>}
+                  </div>
+                ))}
+              </div>
+              {/* 支部員 */}
+              <div style={{padding:"3px 10px 9px",borderTop:`1px solid ${C.g100}`}}>
+                <div style={{fontSize:8,fontWeight:700,letterSpacing:2,color:C.g300,padding:"7px 4px 5px"}}>MEMBERS</div>
+                {regulars.map((m,i)=>(
+                  <div key={m.id} style={{display:"flex",alignItems:"center",gap:9,padding:"7px",borderRadius:9,cursor:"pointer",marginBottom:2}} onClick={()=>{setSelM(m);setPage("members");}}>
+                    <Av name={m.name} size={30} color={getMC(m)} photo={m.photo}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}<span style={{fontSize:10,color:C.g500,marginLeft:4}}>{m.nick}</span></div>
+                      <div style={{fontSize:10,color:C.g500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.org}</div>
+                    </div>
+                    {edit&&(
+                      <div style={{display:"flex",gap:2,flexShrink:0}}>
+                        <button onClick={e=>{e.stopPropagation();moveM(m.id,-1);}} style={{background:C.g100,border:"none",borderRadius:4,padding:"3px 7px",cursor:"pointer",fontSize:14,lineHeight:1}}>↑</button>
+                        <button onClick={e=>{e.stopPropagation();moveM(m.id,1);}} style={{background:C.g100,border:"none",borderRadius:4,padding:"3px 7px",cursor:"pointer",fontSize:14,lineHeight:1}}>↓</button>
+                      </div>
+                    )}
+                    {!edit&&<span style={{color:C.g300,fontSize:14,flexShrink:0}}>›</span>}
+                  </div>
+                ))}
+              </div>
+              <div style={{padding:"0 13px 13px"}}>
+                <button onClick={()=>goPage("members")} style={{...oBtn,width:"100%",fontSize:11}}>メンバーページへ →</button>
+              </div>
+            </div>
+
+            {META.reportUrl&&(
+              <a href={META.reportUrl} target="_blank" rel="noopener noreferrer" style={{...card,padding:"13px 15px",display:"flex",alignItems:"center",justifyContent:"space-between",textDecoration:"none",color:C.k}}>
+                <div><div style={{fontSize:9,letterSpacing:2,color:C.g500,fontWeight:700,marginBottom:2}}>ACTIVITY REPORT</div><div style={{fontSize:14,fontWeight:600}}>活動報告一覧 ↗</div></div>
+                <span style={{fontSize:18,color:C.g300}}>›</span>
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* MEMBERS LIST */}
+        {page==="members"&&!selM&&(
+          <div className="fade-in">
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+              <div style={{flex:1}}><div style={{fontSize:9,letterSpacing:2,color:C.g500,fontWeight:700}}>MEMBERS</div><h1 style={{fontSize:20,fontWeight:700,letterSpacing:-.3}}>メンバー一覧</h1></div>
+              {edit&&<button style={sBtn} onClick={addM}>＋</button>}
+            </div>
+            <input value={mSearch} onChange={e=>setMSearch(e.target.value)} placeholder="🔍 名前・メール・電話で検索"
+              style={{width:"100%",border:`1px solid ${C.g200}`,padding:"10px 13px",fontSize:13,fontFamily:"inherit",borderRadius:10,outline:"none",marginBottom:11,background:C.w}}/>
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              {filtered.map(m=>(
+                <div key={m.id} style={{...card,padding:"11px 13px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>setSelM(m)}>
+                  <Av name={m.name} size={40} color={getMC(m)} photo={m.photo}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}<span style={{fontSize:10,color:C.g500,marginLeft:5}}>{m.nick}</span></div>
+                    <div style={{fontSize:10,color:C.g500,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.org}</div>
+                    {m.email&&<div style={{fontSize:10,color:"#0891b2",marginTop:1}}>{m.email}</div>}
+                  </div>
+                  <span style={{fontSize:9,fontWeight:700,color:"white",padding:"2px 7px",background:getMC(m),borderRadius:20,whiteSpace:"nowrap",flexShrink:0}}>{m.role}</span>
+                  {edit&&<button onClick={e=>{e.stopPropagation();delM(m.id);}} style={{background:"none",border:"none",color:"#dc2626",fontSize:16,cursor:"pointer",padding:3,flexShrink:0}}>×</button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* MEMBER DETAIL */}
+        {page==="members"&&selM&&(()=>{
+          const m=selM;
+          const mColor=getMC(m);
+          const mp=projects.filter(p=>[p.lead,p.main,p.sub1,p.sub2].includes(m.name));
+          const isGray=!m.color&&m.role==="支部員";
+          const hBg=isGray?"#efefed":mColor;
+          const hTxt=isGray?C.k:"white";
+          const hSub=isGray?C.g500:"rgba(255,255,255,.75)";
+          return(
+            <div className="fade-in">
+              <button onClick={()=>setSelM(null)} style={{background:"none",border:"none",cursor:"pointer",color:C.g500,fontSize:12,display:"flex",alignItems:"center",gap:3,marginBottom:12,padding:0,fontFamily:"inherit"}}>← メンバー一覧</button>
+              <div style={{background:hBg,borderRadius:14,padding:"20px 16px",marginBottom:12,position:"relative"}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{position:"relative",flexShrink:0}}>
+                    <Av name={m.name} size={60} color={isGray?"#c4c4c2":mColor} photo={m.photo}/>
+                    {edit&&<label style={{position:"absolute",bottom:-3,right:-3,background:"white",borderRadius:"50%",width:22,height:22,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 1px 5px rgba(0,0,0,.22)",fontSize:11,border:`1px solid ${C.g200}`}}>📷<input type="file" accept="image/*" onChange={e=>handlePhoto(m.id,"photo",e)} style={{display:"none"}}/></label>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:19,fontWeight:700,color:hTxt,letterSpacing:-.3}}>{m.name}</div>
+                    <div style={{fontSize:11,color:hSub,marginTop:1}}>{m.kana}</div>
+                    <div style={{fontSize:11,color:hSub}}>（{m.nick}）</div>
+                  </div>
+                  <span style={{fontSize:9,fontWeight:700,color:isGray?C.k:"white",padding:"3px 9px",background:isGray?"rgba(0,0,0,.09)":"rgba(0,0,0,.18)",borderRadius:20,flexShrink:0,alignSelf:"flex-start"}}>{m.role}</span>
+                </div>
+                {edit&&(
+                  <div style={{display:"flex",gap:7,marginTop:12}}>
+                    <button onClick={()=>setEditMId(m.id)} style={{flex:1,background:"rgba(255,255,255,.22)",border:"1px solid rgba(255,255,255,.35)",borderRadius:8,padding:"8px",fontSize:12,fontWeight:600,cursor:"pointer",color:hTxt,fontFamily:"inherit"}}>✏️ 編集</button>
+                    <button onClick={()=>setColorId(m.id)} style={{flex:1,background:"rgba(255,255,255,.22)",border:"1px solid rgba(255,255,255,.35)",borderRadius:8,padding:"8px",fontSize:12,fontWeight:600,cursor:"pointer",color:hTxt,fontFamily:"inherit"}}>🎨 カラー</button>
+                  </div>
+                )}
+              </div>
+              <div style={{...card,padding:"13px 15px",marginBottom:11}}>
+                <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.g500,marginBottom:9}}>CONTACT</div>
+                {[["電話",m.phone,"tel"],["メール",m.email,"email"],["住所",m.address,""]].map(([l,v,t])=>(
+                  <div key={l} style={{marginBottom:8}}>
+                    <div style={{fontSize:9,fontWeight:700,color:C.g500,letterSpacing:1,marginBottom:2}}>{l}</div>
+                    {v?t==="tel"?<a href={`tel:${v}`} style={{fontSize:13,color:"#0891b2",textDecoration:"none",fontWeight:500}}>{v}</a>:t==="email"?<a href={`mailto:${v}`} style={{fontSize:13,color:"#0891b2",textDecoration:"none",fontWeight:500}}>{v}</a>:<span style={{fontSize:13}}>{v}</span>:<span style={{fontSize:13,color:C.g300}}>—</span>}
+                  </div>
+                ))}
+              </div>
+              <div style={{...card,padding:"13px 15px",marginBottom:11}}>
+                <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.g500,marginBottom:7}}>ORGANIZATION</div>
+                <div style={{fontSize:13}}>{m.org||"—"}</div>
+                {m.note&&<div style={{fontSize:12,color:C.g500,marginTop:7,lineHeight:1.6}}>{m.note}</div>}
+              </div>
+              <div style={{...card,padding:"13px 15px",marginBottom:11}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:9}}>
+                  <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.g500}}>BUSINESS CARD</div>
+                  {edit&&<label style={{...oBtn,fontSize:10,cursor:"pointer"}}>📎 アップロード<input type="file" accept="image/*" onChange={e=>handlePhoto(m.id,"card",e)} style={{display:"none"}}/></label>}
+                </div>
+                {m.card?<div style={{position:"relative"}}><img src={m.card} alt="名刺" style={{width:"100%",borderRadius:9,border:`1px solid ${C.g200}`}}/>{edit&&<button onClick={()=>updM(m.id,"card",null)} style={{position:"absolute",top:6,right:6,background:"rgba(220,38,38,.9)",color:"white",border:"none",borderRadius:6,padding:"4px 9px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>削除</button>}</div>:<div style={{background:C.g100,border:`2px dashed ${C.g200}`,borderRadius:9,padding:"20px",textAlign:"center",color:C.g300,fontSize:12}}>名刺画像なし</div>}
+              </div>
+              {mp.length>0&&(
+                <div style={{...card,padding:"13px 15px"}}>
+                  <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.g500,marginBottom:9}}>PROJECTS</div>
+                  {mp.map(p=>(
+                    <div key={p.id} onClick={()=>{goPage("projects");setExpandedP(p.id);}} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 0",borderBottom:`1px solid ${C.g100}`,cursor:"pointer"}}>
+                      <div style={{width:4,height:28,background:p.color,borderRadius:2,flexShrink:0}}/>
+                      <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600}}>{p.name}</div><div style={{fontSize:10,color:C.g500}}>{p.lead===m.name?"主担当（窓口）":p.main===m.name?"主協力者":"副協力者"}</div></div>
+                      <span style={{color:C.g300}}>›</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* PROJECTS */}
+        {page==="projects"&&(
+          <div className="fade-in">
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+              <div style={{flex:1}}><div style={{fontSize:9,letterSpacing:2,color:C.g500,fontWeight:700}}>PROJECTS</div><h1 style={{fontSize:20,fontWeight:700,letterSpacing:-.3}}>事業一覧</h1></div>
+              {edit&&<button style={sBtn} onClick={addP}>＋</button>}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:9}}>
+              {projects.map(p=>{
+                const open=expandedP===p.id;
+                return(
+                  <div key={p.id} style={{...card,overflow:"hidden"}}>
+                    <div onClick={()=>setExpandedP(open?null:p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"13px 14px",cursor:"pointer",borderLeft:`5px solid ${p.color}`}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        {edit?<input value={p.name} onChange={e=>updP(p.id,"name",e.target.value)} onClick={e=>e.stopPropagation()} style={{fontWeight:700,fontSize:14,border:`1px solid ${C.g200}`,padding:"4px 8px",borderRadius:6,fontFamily:"inherit",width:"100%"}}/>
+                          :<div style={{fontSize:14,fontWeight:700,color:p.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>}
+                        <div style={{fontSize:11,color:C.g500,marginTop:2}}>窓口: {p.lead||"未設定"}</div>
+                      </div>
+                      {p.url&&!open&&<a href={p.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:10,color:C.g500,border:`1px solid ${C.g200}`,padding:"3px 8px",textDecoration:"none",borderRadius:5,whiteSpace:"nowrap",flexShrink:0}}>資料 ↗</a>}
+                      {edit&&<button onClick={e=>{e.stopPropagation();delP(p.id);}} style={{background:"none",border:"none",color:"#dc2626",fontSize:17,cursor:"pointer",padding:3,flexShrink:0}}>×</button>}
+                      <span style={{fontSize:16,color:C.g300,transform:`rotate(${open?90:0}deg)`,transition:"transform .2s",flexShrink:0}}>›</span>
+                    </div>
+                    {open&&(
+                      <div style={{padding:"0 14px 14px",borderTop:`1px solid ${C.g100}`}} className="fade-in">
+                        <div style={{padding:"10px 0",borderBottom:`1px solid ${C.g100}`}}>
+                          {edit?<textarea value={p.desc} onChange={e=>updP(p.id,"desc",e.target.value)} style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px",borderRadius:7,fontSize:12,fontFamily:"inherit",resize:"vertical"}} rows={2}/>
+                            :<div style={{fontSize:12,color:C.g700,lineHeight:1.7}}>{p.desc}</div>}
+                        </div>
+                        <div style={{padding:"10px 0",borderBottom:`1px solid ${C.g100}`}}>
+                          <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,color:C.g500,marginBottom:7}}>担当者</div>
+                          {[{l:"主担当（窓口）",k:"lead",v:p.lead},{l:"主協力",k:"main",v:p.main},{l:"副協力①",k:"sub1",v:p.sub1},{l:"副協力②",k:"sub2",v:p.sub2}].map(r=>{
+                            const mem=members.find(m=>m.name===r.v);
+                            return(
+                              <div key={r.l} style={{display:"flex",alignItems:"center",gap:9,padding:"5px 0"}}>
+                                <div style={{minWidth:72,fontSize:10,color:C.g500,fontWeight:600}}>{r.l}</div>
+                                {edit?<select value={r.v} onChange={e=>updP(p.id,r.k,e.target.value)} style={{fontFamily:"inherit",fontSize:12,border:`1px solid ${C.g200}`,borderRadius:7,padding:"4px 8px",flex:1}}><option value="－">－</option>{members.map(m=><option key={m.id} value={m.name}>{m.name}</option>)}</select>
+                                  :mem?<div style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer"}} onClick={()=>{setSelM(mem);setPage("members");}}><Av name={mem.name} size={22} color={getMC(mem)} photo={mem.photo}/><span style={{fontSize:12,fontWeight:600}}>{mem.name}</span><span style={{fontSize:10,color:C.g500}}>（{mem.nick}）</span></div>:<span style={{fontSize:12,color:C.g300}}>{r.v}</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {(p.note||edit)&&(
+                          <div style={{padding:"10px 0",borderBottom:`1px solid ${C.g100}`}}>
+                            <div style={{fontSize:9,fontWeight:700,letterSpacing:1.5,color:C.g500,marginBottom:5}}>備考・ルール</div>
+                            {edit?<textarea value={p.note} onChange={e=>updP(p.id,"note",e.target.value)} style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px",borderRadius:7,fontSize:12,fontFamily:"inherit",resize:"vertical"}} rows={2}/>:<div style={{fontSize:12,color:C.g700,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{p.note}</div>}
+                          </div>
+                        )}
+                        <div style={{paddingTop:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                          {edit&&<input value={p.url} onChange={e=>updP(p.id,"url",e.target.value)} placeholder="https://…" style={{flex:1,border:`1px solid ${C.g200}`,padding:"8px 10px",borderRadius:7,fontSize:11,fontFamily:"inherit",minWidth:150}}/>}
+                          {p.url&&<a href={p.url} target="_blank" rel="noopener noreferrer" style={{background:p.color,color:"white",padding:"8px 16px",borderRadius:8,textDecoration:"none",fontSize:12,fontWeight:700,display:"inline-block"}}>📄 資料を開く ↗</a>}
+                          {META.docUrl&&<a href={META.docUrl} target="_blank" rel="noopener noreferrer" style={{...oBtn,textDecoration:"none",fontSize:11}}>情報共有BOX ↗</a>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* パスワード */}
+      {showPw&&<PwModal onSuccess={()=>{setEdit(true);setShowPw(false);}} onClose={()=>setShowPw(false)}/>}
+
+      {/* カラー変更 */}
+      {colorId&&colorM&&(
+        <Modal title={`🎨 ${colorM.name} のカラー`} onClose={()=>setColorId(null)}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:13,padding:"10px",background:C.g100,borderRadius:9}}>
+            <Av name={colorM.name} size={44} color={getMC(colorM)} photo={colorM.photo}/>
+            <div><div style={{fontSize:14,fontWeight:700}}>{colorM.name}</div><div style={{fontSize:11,color:C.g500}}>{colorM.role}</div></div>
+          </div>
+          <ColorPicker current={getMC(colorM)} onChange={c=>updM(colorId,"color",c)}/>
+          <button onClick={()=>updM(colorId,"color",null)} style={{...oBtn,width:"100%",marginTop:10,fontSize:11}}>デフォルト色に戻す</button>
+          <button onClick={()=>setColorId(null)} style={{...sBtn,width:"100%",marginTop:7,padding:"12px",fontSize:14}}>完了</button>
+        </Modal>
+      )}
+
+      {/* メンバー編集 */}
+      {editMId&&editMember&&(
+        <Modal title={`✏️ ${editMember.name} を編集`} onClose={()=>setEditMId(null)}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:13,paddingBottom:13,borderBottom:`1px solid ${C.g100}`}}>
+            <Av name={editMember.name} size={48} color={getMC(editMember)} photo={editMember.photo}/>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <label style={{...oBtn,fontSize:11,cursor:"pointer"}}>📷 写真を変更<input type="file" accept="image/*" onChange={e=>handlePhoto(editMId,"photo",e)} style={{display:"none"}}/></label>
+              {editMember.photo&&<button onClick={()=>updM(editMId,"photo",null)} style={{...oBtn,fontSize:10,color:"#dc2626",borderColor:"#fca5a5"}}>削除</button>}
+            </div>
+          </div>
+          {[["氏名","name","text",""],["読み方","kana","text","よみがな"],["ニックネーム","nick","text",""],["所属","org","text",""],["電話","phone","tel","090-xxxx-xxxx"],["メール","email","email","xxx@example.com"],["住所","address","text",""]].map(([l,k,t,ph])=>(
+            <div key={k} style={{marginBottom:9}}>
+              <div style={{fontSize:9,fontWeight:700,color:C.g500,letterSpacing:1.5,marginBottom:3}}>{l}</div>
+              <input type={t} value={editMember[k]||""} onChange={e=>updM(editMId,k,e.target.value)} placeholder={ph} style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px 10px",fontSize:13,fontFamily:"inherit",borderRadius:7,outline:"none",background:"#fffde7"}}/>
+            </div>
+          ))}
+          <div style={{marginBottom:9}}>
+            <div style={{fontSize:9,fontWeight:700,color:C.g500,letterSpacing:1.5,marginBottom:3}}>役割</div>
+            <select value={editMember.role} onChange={e=>updM(editMId,"role",e.target.value)} style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px 10px",fontSize:13,fontFamily:"inherit",borderRadius:7,outline:"none",background:"#fffde7"}}>
+              {ROLES.map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+          <div style={{marginBottom:9}}>
+            <div style={{fontSize:9,fontWeight:700,color:C.g500,letterSpacing:1.5,marginBottom:3}}>メモ・備考</div>
+            <textarea value={editMember.note||""} onChange={e=>updM(editMId,"note",e.target.value)} rows={2} style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px 10px",fontSize:13,fontFamily:"inherit",borderRadius:7,outline:"none",background:"#fffde7",resize:"vertical"}}/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:9,fontWeight:700,color:C.g500,letterSpacing:1.5,marginBottom:7}}>名刺画像</div>
+            {editMember.card
+              ?<div style={{position:"relative"}}><img src={editMember.card} alt="名刺" style={{width:"100%",borderRadius:9,border:`1px solid ${C.g200}`}}/><button onClick={()=>updM(editMId,"card",null)} style={{position:"absolute",top:7,right:7,background:"rgba(220,38,38,.9)",color:"white",border:"none",borderRadius:6,padding:"4px 9px",fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>削除</button></div>
+              :<label style={{display:"block",background:C.g100,border:`2px dashed ${C.g200}`,borderRadius:10,padding:"18px",textAlign:"center",cursor:"pointer",color:C.g500,fontSize:12}}>📎 名刺をアップロード<br/><span style={{fontSize:10,color:C.g300}}>タップして選択</span><input type="file" accept="image/*" onChange={e=>handlePhoto(editMId,"card",e)} style={{display:"none"}}/></label>
+            }
+          </div>
+          <button onClick={()=>setEditMId(null)} style={{...sBtn,width:"100%",padding:"12px",fontSize:14}}>保存して閉じる</button>
+        </Modal>
+      )}
+    </div>
+  );
+}
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
