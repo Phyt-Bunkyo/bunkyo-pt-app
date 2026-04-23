@@ -280,9 +280,10 @@ function SyncIndicator({syncing}){
 // ================================================================
 function App(){
   const {ready,save,listen,initIfEmpty}=useFirebase();
-  const [members,setMembers]=useState(INIT_MEMBERS);
-  const [projects,setProjects]=useState(INIT_PROJECTS);
-  const [notices,setNotices]=useState(INIT_NOTICES);
+  const [members,setMembers]=useState([]);
+  const [projects,setProjects]=useState([]);
+  const [notices,setNotices]=useState([]);
+  const [dataLoaded,setDataLoaded]=useState(false);
   const [page,setPage]=useState("home");
   const [selM,setSelM]=useState(null);
   const [edit,setEdit]=useState(false);
@@ -304,9 +305,12 @@ function App(){
     initIfEmpty("projects",INIT_PROJECTS);
     initIfEmpty("notices",INIT_NOTICES);
     // リアルタイムで変更を受信
-    const unM=listen("members",v=>{setMembers(Array.isArray(v)?v:Object.values(v));});
-    const unP=listen("projects",v=>{setProjects(Array.isArray(v)?v:Object.values(v));});
-    const unN=listen("notices",v=>{setNotices(Array.isArray(v)?v:Object.values(v));});
+    // データ受信カウンター — 3つ全部届いたらdataLoaded=true
+    let loadCount=0;
+    const onLoad=()=>{loadCount++;if(loadCount>=3)setDataLoaded(true);};
+    const unM=listen("members",v=>{setMembers(Array.isArray(v)?v:Object.values(v));onLoad();});
+    const unP=listen("projects",v=>{setProjects(Array.isArray(v)?v:Object.values(v));onLoad();});
+    const unN=listen("notices",v=>{setNotices(Array.isArray(v)?v:Object.values(v));onLoad();});
     setDbStatus("online");
     return()=>{unM();unP();unN();};
   },[ready]);
@@ -417,12 +421,20 @@ function App(){
   // Firebase未設定 → セットアップ画面
   if(!IS_CONFIGURED)return <SetupScreen/>;
 
-  // 接続中
-  if(!ready)return(
+  // 接続中 or データ読み込み中
+  if(!ready||!dataLoaded)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f5f5f3"}}>
       <div style={{textAlign:"center"}}>
-        <div style={{fontSize:32,marginBottom:12}}>🔥</div>
-        <div style={{fontSize:15,fontWeight:600}}>Firebaseに接続中...</div>
+        <div style={{fontSize:32,marginBottom:16}}>🔥</div>
+        <div style={{fontSize:15,fontWeight:600,marginBottom:8,color:"#0a0a0a"}}>
+          {!ready?"Firebaseに接続中...":"データを読み込み中..."}
+        </div>
+        <div style={{display:"flex",gap:6,justifyContent:"center",marginTop:12}}>
+          {[0,1,2].map(i=>(
+            <div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#0a0a0a",animation:`bounce 1.2s ease-in-out ${i*0.2}s infinite`}}/>
+          ))}
+        </div>
+        <style>{`@keyframes bounce{0%,80%,100%{transform:scale(0);opacity:.3}40%{transform:scale(1);opacity:1}}`}</style>
       </div>
     </div>
   );
