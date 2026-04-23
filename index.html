@@ -4,9 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>PT Bunkyo</title>
+<!-- React -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 body{font-family:'Noto Sans JP','Hiragino Sans','Helvetica Neue',sans-serif;background:#f5f5f3;color:#0a0a0a;overflow-x:hidden;}
@@ -14,10 +18,12 @@ body{font-family:'Noto Sans JP','Hiragino Sans','Helvetica Neue',sans-serif;back
 @keyframes pulseSlow{0%,100%{opacity:.35}50%{opacity:.85}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes saveFlash{0%{opacity:0;transform:translateX(-50%) translateY(-10px)}20%{opacity:1;transform:translateX(-50%) translateY(0)}80%{opacity:1}100%{opacity:0}}
 .hero-bg{animation:float 22s ease-in-out infinite}
 .hero-p{animation:pulseSlow 4s ease-in-out infinite}
 .fade-in{animation:fadeIn .22s ease}
 .slide-up{animation:slideUp .28s ease}
+.save-toast{animation:saveFlash 2.2s ease forwards}
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-thumb{background:#d4d4d0;border-radius:2px}
 button,a{touch-action:manipulation}
@@ -27,12 +33,32 @@ button,a{touch-action:manipulation}
 @media(min-width:600px){.modal-box{border-radius:14px;padding:28px 28px 32px}}
 .color-dot{width:28px;height:28px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform .12s;display:inline-block;}
 .color-dot.sel{border-color:#0a0a0a;transform:scale(1.18)}
+/* Firebase未設定時の設定画面 */
+.setup-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:#f5f5f3;}
+.setup-card{background:white;border-radius:16px;padding:28px 24px;max-width:440px;width:100%;border:1px solid #e8e8e5;}
 </style>
 </head>
 <body>
 <div id="root"></div>
+<script>
+// ================================================================
+// ★★★ FIREBASE設定をここに入力してください ★★★
+// Firebase Consoleから取得した設定を貼り付けてください
+// ================================================================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDMUdd5qks81SmBpFVHt6bjbOXqkQS2ji0",           // ← Firebaseの設定から
+  authDomain: "bunkyo-pt.firebaseapp.com",       // ← 例: your-app.firebaseapp.com
+  databaseURL: "https://bunkyo-pt-default-rtdb.firebaseio.com",      // ← 例: https://your-app-default-rtdb.firebaseio.com
+  projectId: "bunkyo-pt",        // ← 例: your-app-12345
+  storageBucket: "bunkyo-pt.firebasestorage.app",    // ← 例: your-app.appspot.com
+  messagingSenderId: "325567377386",// ← 数字
+  appId: "1:325567377386:web:df66e9f0fdbbecb0174c93"             // ← 1:xxx:web:xxx
+};
+// ================================================================
+const IS_CONFIGURED = FIREBASE_CONFIG.databaseURL !== "";
+</script>
 <script type="text/babel">
-const {useState,useEffect,useRef}=React;
+const {useState,useEffect,useRef,useCallback}=React;
 
 const EDIT_PASSWORD="bunkyo2026";
 const PRESET_COLORS=["#dc2626","#ea580c","#d97706","#16a34a","#0891b2","#2563eb","#7c3aed","#db2777","#6b7280","#0f172a","#059669","#be123c","#1e40af","#7e22ce","#374151"];
@@ -72,6 +98,97 @@ const INIT_NOTICES=[
 
 function getMC(m){return m.color||DEF_COLORS[m.role]||"#6b7280";}
 
+// ================================================================
+// Firebase Hook
+// ================================================================
+function useFirebase(){
+  const dbRef=useRef(null);
+  const [ready,setReady]=useState(false);
+
+  useEffect(()=>{
+    if(!IS_CONFIGURED)return;
+    try{
+      if(!firebase.apps.length){
+        firebase.initializeApp(FIREBASE_CONFIG);
+      }
+      dbRef.current=firebase.database();
+      setReady(true);
+    }catch(e){console.error("Firebase init error:",e);}
+  },[]);
+
+  const save=(path,data)=>{
+    if(!dbRef.current)return;
+    dbRef.current.ref(path).set(data);
+  };
+
+  const listen=(path,cb)=>{
+    if(!dbRef.current)return ()=>{};
+    const ref=dbRef.current.ref(path);
+    ref.on("value",snap=>{
+      const val=snap.val();
+      if(val!==null)cb(val);
+    });
+    return ()=>ref.off();
+  };
+
+  const initIfEmpty=(path,initData)=>{
+    if(!dbRef.current)return;
+    dbRef.current.ref(path).once("value",snap=>{
+      if(!snap.exists()){
+        dbRef.current.ref(path).set(initData);
+      }
+    });
+  };
+
+  return {ready,save,listen,initIfEmpty};
+}
+
+// ================================================================
+// Firebase Setup Screen
+// ================================================================
+function SetupScreen(){
+  const C={g200:"#e8e8e5",g500:"#8a8a85",g700:"#3d3d3a"};
+  return(
+    <div className="setup-screen">
+      <div className="setup-card">
+        <div style={{fontSize:32,marginBottom:12,textAlign:"center"}}>🔥</div>
+        <h1 style={{fontSize:20,fontWeight:700,marginBottom:6,textAlign:"center"}}>Firebase設定が必要です</h1>
+        <p style={{fontSize:13,color:C.g700,lineHeight:1.7,marginBottom:20,textAlign:"center"}}>
+          チーム全員でデータを同期するには<br/>Firebaseの設定が必要です
+        </p>
+        <div style={{background:"#f5f5f3",borderRadius:10,padding:"16px",marginBottom:20,fontSize:12,lineHeight:1.8,color:C.g700}}>
+          <strong style={{display:"block",marginBottom:6,fontSize:13}}>📋 設定手順</strong>
+          <div style={{marginBottom:4}}>1. <a href="https://console.firebase.google.com" target="_blank" style={{color:"#0891b2"}}>console.firebase.google.com</a> にアクセス</div>
+          <div style={{marginBottom:4}}>2. 「プロジェクトを追加」→ プロジェクト名を入力</div>
+          <div style={{marginBottom:4}}>3. 「ウェブアプリを追加」（&lt;/&gt;アイコン）</div>
+          <div style={{marginBottom:4}}>4. 表示された設定をコピー</div>
+          <div style={{marginBottom:4}}>5. 「Realtime Database」→「データベースを作成」</div>
+          <div style={{marginBottom:4}}>6. セキュリティルールで「テストモード」を選択</div>
+          <div style={{marginBottom:12}}>7. index.html の FIREBASE_CONFIG に設定を貼り付け</div>
+          <div style={{background:"#fff",borderRadius:6,padding:"10px",fontFamily:"monospace",fontSize:11,color:"#374151",border:`1px solid ${C.g200}`}}>
+            {`const FIREBASE_CONFIG = {
+  apiKey: "AIzaSy...",
+  databaseURL: "https://xxx.firebaseio.com",
+  projectId: "your-project",
+  ...
+};`}
+          </div>
+        </div>
+        <a href="https://console.firebase.google.com" target="_blank"
+          style={{display:"block",background:"#0a0a0a",color:"white",padding:"13px",borderRadius:10,textAlign:"center",textDecoration:"none",fontSize:14,fontWeight:700}}>
+          Firebase Consoleを開く →
+        </a>
+        <p style={{fontSize:11,color:C.g500,textAlign:"center",marginTop:12}}>
+          設定後は index.html を GitHub に再アップロードしてください
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ================================================================
+// Clock
+// ================================================================
 function Clock(){
   const [now,setNow]=useState(new Date());
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
@@ -140,7 +257,29 @@ function ColorPicker({current,onChange}){
   );
 }
 
+function SaveToast({show}){
+  if(!show)return null;
+  return(
+    <div className="save-toast" style={{position:"fixed",top:62,left:"50%",background:"#059669",color:"white",padding:"8px 20px",borderRadius:20,fontSize:13,fontWeight:700,zIndex:400,boxShadow:"0 2px 12px rgba(0,0,0,.15)",whiteSpace:"nowrap",pointerEvents:"none"}}>
+      ✅ 全員に保存されました
+    </div>
+  );
+}
+
+function SyncIndicator({syncing}){
+  return(
+    <div style={{position:"fixed",top:14,left:"50%",transform:"translateX(-50%)",background:syncing?"#fbbf24":"#059669",color:"white",padding:"4px 14px",borderRadius:20,fontSize:11,fontWeight:700,zIndex:99,transition:"background .3s",display:"flex",alignItems:"center",gap:5,pointerEvents:"none",opacity:syncing?1:0,transition:"opacity .5s"}}>
+      <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:"rgba(255,255,255,.8)",animation:syncing?"none":"none"}}/>
+      {syncing?"同期中...":"同期済み"}
+    </div>
+  );
+}
+
+// ================================================================
+// Main App
+// ================================================================
 function App(){
+  const {ready,save,listen,initIfEmpty}=useFirebase();
   const [members,setMembers]=useState(INIT_MEMBERS);
   const [projects,setProjects]=useState(INIT_PROJECTS);
   const [notices,setNotices]=useState(INIT_NOTICES);
@@ -153,37 +292,91 @@ function App(){
   const [editMId,setEditMId]=useState(null);
   const [colorId,setColorId]=useState(null);
   const [noticeEdit,setNoticeEdit]=useState(false);
+  const [showToast,setShowToast]=useState(false);
+  const [syncing,setSyncing]=useState(false);
+  const [dbStatus,setDbStatus]=useState("connecting"); // connecting | online | offline
 
-  const updM=(id,k,v)=>{
-    setMembers(ms=>ms.map(m=>m.id===id?{...m,[k]:v}:m));
-    setSelM(prev=>prev&&prev.id===id?{...prev,[k]:v}:prev);
+  // Firebase初期化 & リアルタイムリスニング
+  useEffect(()=>{
+    if(!ready)return;
+    // 初回：DBが空なら初期データを書き込む
+    initIfEmpty("members",INIT_MEMBERS);
+    initIfEmpty("projects",INIT_PROJECTS);
+    initIfEmpty("notices",INIT_NOTICES);
+    // リアルタイムで変更を受信
+    const unM=listen("members",v=>{setMembers(Array.isArray(v)?v:Object.values(v));});
+    const unP=listen("projects",v=>{setProjects(Array.isArray(v)?v:Object.values(v));});
+    const unN=listen("notices",v=>{setNotices(Array.isArray(v)?v:Object.values(v));});
+    setDbStatus("online");
+    return()=>{unM();unP();unN();};
+  },[ready]);
+
+  const toast=()=>{setShowToast(true);setTimeout(()=>setShowToast(false),2500);};
+  const saveDB=(path,data)=>{
+    setSyncing(true);
+    save(path,data);
+    setTimeout(()=>setSyncing(false),800);
+    toast();
   };
 
-  // ★ 並び替え：orderを直接swap
+  const updM=(id,k,v)=>{
+    const updated=members.map(m=>m.id===id?{...m,[k]:v}:m);
+    setMembers(updated);
+    setSelM(prev=>prev&&prev.id===id?{...prev,[k]:v}:prev);
+    saveDB("members",updated);
+  };
+
   const moveM=(id,dir)=>{
-    setMembers(prev=>{
-      const sorted=[...prev].sort((a,b)=>a.order-b.order);
-      const idx=sorted.findIndex(m=>m.id===id);
-      const newIdx=idx+dir;
-      if(newIdx<0||newIdx>=sorted.length)return prev;
-      const oA=sorted[idx].order;
-      const oB=sorted[newIdx].order;
-      return prev.map(m=>{
-        if(m.id===sorted[idx].id)return{...m,order:oB};
-        if(m.id===sorted[newIdx].id)return{...m,order:oA};
-        return m;
-      });
+    const sorted=[...members].sort((a,b)=>a.order-b.order);
+    const idx=sorted.findIndex(m=>m.id===id);
+    const newIdx=idx+dir;
+    if(newIdx<0||newIdx>=sorted.length)return;
+    const oA=sorted[idx].order;
+    const oB=sorted[newIdx].order;
+    const updated=members.map(m=>{
+      if(m.id===sorted[idx].id)return{...m,order:oB};
+      if(m.id===sorted[newIdx].id)return{...m,order:oA};
+      return m;
     });
+    setMembers(updated);
+    saveDB("members",updated);
   };
 
   const addM=()=>{
     const max=Math.max(...members.map(m=>m.order),0);
-    setMembers(ms=>[...ms,{id:Date.now(),name:"新メンバー",kana:"",nick:"",role:"支部員",org:"",phone:"",email:"",address:"",note:"",photo:null,card:null,color:null,order:max+1}]);
+    const m={id:Date.now(),name:"新メンバー",kana:"",nick:"",role:"支部員",org:"",phone:"",email:"",address:"",note:"",photo:null,card:null,color:null,order:max+1};
+    const updated=[...members,m];
+    setMembers(updated);
+    saveDB("members",updated);
   };
-  const delM=(id)=>{setMembers(ms=>ms.filter(m=>m.id!==id));if(selM?.id===id)setSelM(null);};
-  const updP=(id,k,v)=>setProjects(ps=>ps.map(p=>p.id===id?{...p,[k]:v}:p));
-  const addP=()=>setProjects(ps=>[...ps,{id:"p"+Date.now(),name:"新規事業",lead:"",main:"",sub1:"－",sub2:"－",desc:"",note:"",color:"#6b7280",url:""}]);
-  const delP=(id)=>setProjects(ps=>ps.filter(p=>p.id!==id));
+  const delM=(id)=>{
+    const updated=members.filter(m=>m.id!==id);
+    setMembers(updated);
+    if(selM?.id===id)setSelM(null);
+    saveDB("members",updated);
+  };
+
+  const updP=(id,k,v)=>{
+    const updated=projects.map(p=>p.id===id?{...p,[k]:v}:p);
+    setProjects(updated);
+    saveDB("projects",updated);
+  };
+  const addP=()=>{
+    const p={id:"p"+Date.now(),name:"新規事業",lead:"",main:"",sub1:"－",sub2:"－",desc:"",note:"",color:"#6b7280",url:""};
+    const updated=[...projects,p];
+    setProjects(updated);
+    saveDB("projects",updated);
+  };
+  const delP=(id)=>{
+    const updated=projects.filter(p=>p.id!==id);
+    setProjects(updated);
+    saveDB("projects",updated);
+  };
+
+  const updNotices=(updated)=>{
+    setNotices(updated);
+    saveDB("notices",updated);
+  };
 
   const sortedAll=[...members].sort((a,b)=>a.order-b.order);
   const officers=sortedAll.filter(m=>m.role!=="支部員");
@@ -191,7 +384,27 @@ function App(){
   const filtered=sortedAll.filter(m=>!mSearch||m.name.includes(mSearch)||m.kana.includes(mSearch)||m.email.includes(mSearch)||m.phone.includes(mSearch));
 
   const goPage=p=>{setPage(p);setSelM(null);};
-  const handlePhoto=(id,type,e)=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>updM(id,type,ev.target.result);r.readAsDataURL(f);};
+  const handlePhoto=(id,type,e)=>{
+    const f=e.target.files[0];if(!f)return;
+    // 画像を圧縮してbase64保存
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        const canvas=document.createElement("canvas");
+        const MAX=600;
+        let w=img.width,h=img.height;
+        if(w>MAX){h=h*MAX/w;w=MAX;}
+        if(h>MAX){w=w*MAX/h;h=MAX;}
+        canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
+        const compressed=canvas.toDataURL("image/jpeg",0.7);
+        updM(id,type,compressed);
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  };
 
   const colorM=members.find(m=>m.id===colorId);
   const editMember=members.find(m=>m.id===editMId);
@@ -201,28 +414,49 @@ function App(){
   const oBtn={background:C.w,color:C.k,border:`1px solid ${C.g200}`,borderRadius:8,padding:"7px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"};
   const card={background:C.w,border:`1px solid ${C.g200}`,borderRadius:14};
 
+  // Firebase未設定 → セットアップ画面
+  if(!IS_CONFIGURED)return <SetupScreen/>;
+
+  // 接続中
+  if(!ready)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f5f5f3"}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:32,marginBottom:12}}>🔥</div>
+        <div style={{fontSize:15,fontWeight:600}}>Firebaseに接続中...</div>
+      </div>
+    </div>
+  );
+
   return(
     <div style={{minHeight:"100vh",background:"#f5f5f3"}}>
+      <SaveToast show={showToast}/>
 
-      {/* ── HEADER（iPhone対応：height固定、flex、折り返しなし） ── */}
-      <header style={{background:C.w,borderBottom:`1px solid ${C.g200}`,position:"sticky",top:0,zIndex:100,WebkitTransform:"translateZ(0)"}}>
+      {/* 同期インジケーター */}
+      {syncing&&(
+        <div style={{position:"fixed",top:54,left:"50%",transform:"translateX(-50%)",background:"#fbbf24",color:"white",padding:"4px 14px",borderRadius:20,fontSize:11,fontWeight:700,zIndex:99,pointerEvents:"none"}}>
+          🔄 同期中...
+        </div>
+      )}
+
+      {/* HEADER */}
+      <header style={{background:C.w,borderBottom:`1px solid ${C.g200}`,position:"sticky",top:0,zIndex:100}}>
         <div style={{display:"flex",alignItems:"center",height:50,padding:"0 10px",gap:3,overflow:"hidden"}}>
-          {/* ロゴ */}
           <div onClick={()=>goPage("home")} style={{cursor:"pointer",flexShrink:0,marginRight:2}}>
             <span style={{fontStyle:"italic",fontWeight:900,fontSize:15,letterSpacing:-.5,whiteSpace:"nowrap",color:C.k}}>PT Bunkyo</span>
           </div>
-          {/* ナビボタン */}
           {[["home","ホーム"],["members","MB"],["projects","事業"]].map(([k,l])=>(
             <button key={k} onClick={()=>goPage(k)}
               style={{background:page===k&&!selM?"#0a0a0a":"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:11,fontWeight:700,color:page===k&&!selM?"white":C.g500,padding:"5px 7px",borderRadius:6,flexShrink:0,whiteSpace:"nowrap"}}>
               {l}
             </button>
           ))}
-          {/* スペーサー */}
           <div style={{flex:1,minWidth:0}}/>
-          {/* 時計 */}
+          {/* オンライン人数インジケーター */}
+          <div style={{display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:"#10b981"}}/>
+            <span style={{fontSize:9,color:C.g500,fontWeight:600}}>LIVE</span>
+          </div>
           <Clock/>
-          {/* 編集ボタン */}
           <button onClick={()=>edit?setEdit(false):setShowPw(true)}
             style={{marginLeft:4,background:edit?"#dc2626":C.w,color:edit?"white":C.k,border:`1px solid ${edit?"#dc2626":C.g200}`,borderRadius:8,padding:"6px 10px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
             {edit?"✎編集中":"編集"}
@@ -230,13 +464,11 @@ function App(){
         </div>
       </header>
 
-      {/* ── BODY ── */}
       <div style={{maxWidth:600,margin:"0 auto",padding:"16px 12px 64px"}}>
 
         {/* HOME */}
         {page==="home"&&!selM&&(
           <div className="fade-in">
-            {/* Hero */}
             <div style={{background:C.k,color:"white",padding:"30px 22px 26px",marginBottom:14,borderRadius:16,position:"relative",overflow:"hidden"}}>
               <div className="hero-bg" style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px)",backgroundSize:"34px 34px",pointerEvents:"none"}}/>
               {[...Array(6)].map((_,i)=>(
@@ -277,24 +509,27 @@ function App(){
               {notices.map(n=>(
                 <div key={n.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${C.g100}`}}>
                   {noticeEdit
-                    ?<><input value={n.icon} onChange={e=>setNotices(ns=>ns.map(x=>x.id===n.id?{...x,icon:e.target.value}:x))} style={{width:32,border:`1px solid ${C.g200}`,padding:3,borderRadius:5,textAlign:"center",fontSize:14,fontFamily:"inherit"}}/><input value={n.text} onChange={e=>setNotices(ns=>ns.map(x=>x.id===n.id?{...x,text:e.target.value}:x))} style={{flex:1,border:`1px solid ${C.g200}`,padding:"4px 7px",borderRadius:5,fontSize:12,fontFamily:"inherit"}}/><button onClick={()=>setNotices(ns=>ns.filter(x=>x.id!==n.id))} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16,flexShrink:0}}>×</button></>
+                    ?<>
+                      <input value={n.icon} onChange={e=>updNotices(notices.map(x=>x.id===n.id?{...x,icon:e.target.value}:x))} style={{width:32,border:`1px solid ${C.g200}`,padding:3,borderRadius:5,textAlign:"center",fontSize:14,fontFamily:"inherit"}}/>
+                      <input value={n.text} onChange={e=>updNotices(notices.map(x=>x.id===n.id?{...x,text:e.target.value}:x))} style={{flex:1,border:`1px solid ${C.g200}`,padding:"4px 7px",borderRadius:5,fontSize:12,fontFamily:"inherit"}}/>
+                      <button onClick={()=>updNotices(notices.filter(x=>x.id!==n.id))} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:16,flexShrink:0}}>×</button>
+                    </>
                     :<><span style={{fontSize:14,flexShrink:0}}>{n.icon}</span><span style={{fontSize:12,color:C.g700}}>{n.text}</span></>
                   }
                 </div>
               ))}
-              {noticeEdit&&<button onClick={()=>setNotices(ns=>[...ns,{id:Date.now(),text:"新しいお知らせ",icon:"📌"}])} style={{...oBtn,marginTop:9,width:"100%",fontSize:11}}>＋ お知らせ追加</button>}
+              {noticeEdit&&<button onClick={()=>updNotices([...notices,{id:Date.now(),text:"新しいお知らせ",icon:"📌"}])} style={{...oBtn,marginTop:9,width:"100%",fontSize:11}}>＋ お知らせ追加</button>}
             </div>
 
-            {/* 全メンバー一覧 */}
+            {/* 全メンバー */}
             <div style={{...card,marginBottom:12}}>
               <div style={{padding:"13px 15px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.g500}}>ALL MEMBERS</div>
                 {edit&&<button style={{...oBtn,fontSize:10,padding:"4px 9px"}} onClick={addM}>＋ 追加</button>}
               </div>
-              {/* 役職者 */}
               <div style={{padding:"7px 10px 3px"}}>
                 <div style={{fontSize:8,fontWeight:700,letterSpacing:2,color:C.g300,padding:"3px 4px 5px"}}>OFFICERS</div>
-                {officers.map((m,i)=>(
+                {officers.map((m)=>(
                   <div key={m.id} style={{display:"flex",alignItems:"center",gap:9,padding:"7px",borderRadius:9,cursor:"pointer",marginBottom:2}} onClick={()=>{setSelM(m);setPage("members");}}>
                     <Av name={m.name} size={34} color={getMC(m)} photo={m.photo}/>
                     <div style={{flex:1,minWidth:0}}>
@@ -312,10 +547,9 @@ function App(){
                   </div>
                 ))}
               </div>
-              {/* 支部員 */}
               <div style={{padding:"3px 10px 9px",borderTop:`1px solid ${C.g100}`}}>
                 <div style={{fontSize:8,fontWeight:700,letterSpacing:2,color:C.g300,padding:"7px 4px 5px"}}>MEMBERS</div>
-                {regulars.map((m,i)=>(
+                {regulars.map((m)=>(
                   <div key={m.id} style={{display:"flex",alignItems:"center",gap:9,padding:"7px",borderRadius:9,cursor:"pointer",marginBottom:2}} onClick={()=>{setSelM(m);setPage("members");}}>
                     <Av name={m.name} size={30} color={getMC(m)} photo={m.photo}/>
                     <div style={{flex:1,minWidth:0}}>
@@ -503,10 +737,8 @@ function App(){
         )}
       </div>
 
-      {/* パスワード */}
       {showPw&&<PwModal onSuccess={()=>{setEdit(true);setShowPw(false);}} onClose={()=>setShowPw(false)}/>}
 
-      {/* カラー変更 */}
       {colorId&&colorM&&(
         <Modal title={`🎨 ${colorM.name} のカラー`} onClose={()=>setColorId(null)}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:13,padding:"10px",background:C.g100,borderRadius:9}}>
@@ -519,7 +751,6 @@ function App(){
         </Modal>
       )}
 
-      {/* メンバー編集 */}
       {editMId&&editMember&&(
         <Modal title={`✏️ ${editMember.name} を編集`} onClose={()=>setEditMId(null)}>
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:13,paddingBottom:13,borderBottom:`1px solid ${C.g100}`}}>
@@ -532,7 +763,8 @@ function App(){
           {[["氏名","name","text",""],["読み方","kana","text","よみがな"],["ニックネーム","nick","text",""],["所属","org","text",""],["電話","phone","tel","090-xxxx-xxxx"],["メール","email","email","xxx@example.com"],["住所","address","text",""]].map(([l,k,t,ph])=>(
             <div key={k} style={{marginBottom:9}}>
               <div style={{fontSize:9,fontWeight:700,color:C.g500,letterSpacing:1.5,marginBottom:3}}>{l}</div>
-              <input type={t} value={editMember[k]||""} onChange={e=>updM(editMId,k,e.target.value)} placeholder={ph} style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px 10px",fontSize:13,fontFamily:"inherit",borderRadius:7,outline:"none",background:"#fffde7"}}/>
+              <input type={t} value={editMember[k]||""} onChange={e=>updM(editMId,k,e.target.value)} placeholder={ph}
+                style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px 10px",fontSize:13,fontFamily:"inherit",borderRadius:7,outline:"none",background:"#fffde7"}}/>
             </div>
           ))}
           <div style={{marginBottom:9}}>
@@ -543,7 +775,8 @@ function App(){
           </div>
           <div style={{marginBottom:9}}>
             <div style={{fontSize:9,fontWeight:700,color:C.g500,letterSpacing:1.5,marginBottom:3}}>メモ・備考</div>
-            <textarea value={editMember.note||""} onChange={e=>updM(editMId,"note",e.target.value)} rows={2} style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px 10px",fontSize:13,fontFamily:"inherit",borderRadius:7,outline:"none",background:"#fffde7",resize:"vertical"}}/>
+            <textarea value={editMember.note||""} onChange={e=>updM(editMId,"note",e.target.value)} rows={2}
+              style={{width:"100%",border:`1px solid ${C.g200}`,padding:"8px 10px",fontSize:13,fontFamily:"inherit",borderRadius:7,outline:"none",background:"#fffde7",resize:"vertical"}}/>
           </div>
           <div style={{marginBottom:12}}>
             <div style={{fontSize:9,fontWeight:700,color:C.g500,letterSpacing:1.5,marginBottom:7}}>名刺画像</div>
@@ -558,6 +791,7 @@ function App(){
     </div>
   );
 }
+
 ReactDOM.render(<App/>,document.getElementById("root"));
 </script>
 </body>
